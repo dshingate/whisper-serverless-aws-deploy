@@ -2,7 +2,7 @@ import base64
 import json
 import urllib.request
 
-API_URL = "https://bpu5zmzlz0.execute-api.us-east-1.amazonaws.com/default/whisper-transcribe-dev"
+API_URL = "https://pcl5imqqq8.execute-api.us-east-1.amazonaws.com/default/whisper-transcribe-prod"
 AUDIO_FILE = r"E:\MLOps\MLOps Specialization Course May  2026\Materials\Test\image-model\local\test_audio\test-ai-model.mp3"
 
 with open(AUDIO_FILE, "rb") as f:
