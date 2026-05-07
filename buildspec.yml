@@ -20,13 +20,22 @@ phases:
     commands:
       - docker pull $DOCKERHUB_USERNAME/whisper-lambda:$MODEL_TAG
       - docker tag $DOCKERHUB_USERNAME/whisper-lambda:$MODEL_TAG $ECR_URI
+      - docker push $ECR_URI
 
   post_build:
     commands:
-      - docker push $ECR_URI
+      # --- Lambda: create or update ---
       - |
         if aws lambda get-function --function-name $LAMBDA_FUNCTION --region $AWS_REGION 2>/dev/null; then
           aws lambda update-function-code --function-name $LAMBDA_FUNCTION --image-uri $ECR_URI --region $AWS_REGION
         else
           aws lambda create-function --function-name $LAMBDA_FUNCTION --package-type Image --code ImageUri=$ECR_URI --role $LAMBDA_ROLE_ARN --timeout 300 --memory-size 3008 --region $AWS_REGION
+          aws lambda wait function-active --function-name $LAMBDA_FUNCTION --region $AWS_REGION
         fi
+      # --- API Gateway: create once, skip if already exists ---
+      - |
+        LAMBDA_ARN=$(aws lambda get-function --function-name $LAMBDA_FUNCTION --region $AWS_REGION --query 'Configuration.FunctionArn' --output text)
+        API_ID=$(aws apigatewayv2 get-apis --region $AWS_REGION --query "Items[?Name=='whisper-api-$DEPLOY_ENV'].ApiId" --output text)
+        [ -z "$API_ID" ] && API_ID=$(aws apigatewayv2 create-api --name whisper-api-$DEPLOY_ENV --protocol-type HTTP --target $LAMBDA_ARN --region $AWS_REGION --query 'ApiId' --output text)
+        aws lambda add-permission --function-name $LAMBDA_FUNCTION --statement-id apigw --action lambda:InvokeFunction --principal apigateway.amazonaws.com --source-arn "arn:aws:execute-api:$AWS_REGION:$AWS_ACCOUNT_ID:$API_ID/*/*" --region $AWS_REGION 2>/dev/null || true
+        echo "API URL: https://$API_ID.execute-api.$AWS_REGION.amazonaws.com/"
